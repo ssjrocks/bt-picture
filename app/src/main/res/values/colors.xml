@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="printer_ink">#1A1A1A</color>
+    <color name="label_white">#FDFDFB</color>
+    <color name="accent">#E85D4C</color>
+</resources>

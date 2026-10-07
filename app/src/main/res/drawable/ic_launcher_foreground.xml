@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- printer body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,40 L74,40 L74,54 L34,54 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M26,54 L82,54 L82,76 L72,76 L72,70 L36,70 L36,76 L26,76 Z" />
+    <!-- emerging photo/label -->
+    <path
+        android:fillColor="#FDFDFB"
+        android:pathData="M38,68 L70,68 L70,92 L38,92 Z" />
+    <!-- tiny mountain + sun on the label, like a printed photo -->
+    <path
+        android:fillColor="#E85D4C"
+        android:pathData="M42,88 L50,78 L56,85 L61,80 L66,88 Z" />
+    <path
+        android:fillColor="#F2B84B"
+        android:pathData="M45.5,76.5m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+    <!-- lens dot on printer body -->
+    <path
+        android:fillColor="#E85D4C"
+        android:pathData="M54,47m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+</vector>
