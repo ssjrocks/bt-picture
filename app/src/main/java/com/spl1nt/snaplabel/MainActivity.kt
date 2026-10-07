@@ -19,20 +19,24 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.spl1nt.snaplabel.printer.BlePrinterManager
 import com.spl1nt.snaplabel.printer.PrinterRepository
 import com.spl1nt.snaplabel.ui.CameraScreen
 import com.spl1nt.snaplabel.ui.EditorScreen
@@ -42,6 +46,7 @@ import com.spl1nt.snaplabel.ui.UpdateAvailableDialog
 import com.spl1nt.snaplabel.ui.theme.SnapLabelTheme
 import com.spl1nt.snaplabel.update.UpdateChecker
 import com.spl1nt.snaplabel.update.UpdateInfo
+import kotlinx.coroutines.flow.first
 
 class MainActivity : ComponentActivity() {
     private lateinit var repo: PrinterRepository
@@ -115,6 +120,15 @@ private fun SnapLabelApp(repo: PrinterRepository) {
         UpdateAvailableDialog(info = info, onDismiss = { availableUpdate = null })
     }
 
+    // Auto-connect to whichever printer was used last, so the app is ready to
+    // print without a trip through the printer screen every time it's opened.
+    LaunchedEffect(Unit) {
+        val savedAddress = repo.rememberedAddress.first()
+        if (savedAddress != null && repo.ble.state.value == BlePrinterManager.State.Disconnected) {
+            repo.connectToRemembered(savedAddress)
+        }
+    }
+
     NavHost(navController = navController, startDestination = Routes.CAMERA) {
         composable(Routes.CAMERA) {
             Box(Modifier.fillMaxSize()) {
@@ -122,10 +136,21 @@ private fun SnapLabelApp(repo: PrinterRepository) {
                     capturedPhoto = bmp
                     navController.navigate(Routes.EDITOR)
                 })
+                val connState by repo.ble.state.collectAsState()
                 IconButton(
                     onClick = { navController.navigate(Routes.PRINTER) },
                     modifier = Modifier.padding(16.dp),
-                ) { Icon(Icons.Default.Print, contentDescription = "Printer settings") }
+                ) {
+                    Icon(
+                        Icons.Default.Print,
+                        contentDescription = "Printer settings",
+                        tint = if (connState is BlePrinterManager.State.Connected) {
+                            Color(0xFF4CAF50)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
             }
         }
         composable(Routes.EDITOR) {
