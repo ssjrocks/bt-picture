@@ -2,6 +2,7 @@ package com.spl1nt.snaplabel.editor
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import androidx.compose.ui.graphics.toArgb
@@ -49,7 +50,26 @@ object LayerRenderer {
                 is Layer.DrawLayer -> {
                     if (layer.points.size < 2) continue
                     strokePaint.color = layer.color.toArgb()
-                    strokePaint.strokeWidth = (layer.strokeWidthPx * scaleX).coerceAtLeast(1f)
+                    val width = (layer.strokeWidthPx * scaleX).coerceAtLeast(1f)
+                    strokePaint.strokeWidth = width
+                    when (layer.brushShape) {
+                        BrushShape.ROUND -> {
+                            strokePaint.strokeCap = Paint.Cap.ROUND
+                            strokePaint.strokeJoin = Paint.Join.ROUND
+                            strokePaint.pathEffect = null
+                        }
+                        BrushShape.SQUARE -> {
+                            strokePaint.strokeCap = Paint.Cap.SQUARE
+                            strokePaint.strokeJoin = Paint.Join.MITER
+                            strokePaint.pathEffect = null
+                        }
+                        BrushShape.DASHED -> {
+                            strokePaint.strokeCap = Paint.Cap.ROUND
+                            strokePaint.strokeJoin = Paint.Join.ROUND
+                            val dash = (width * 1.6f).coerceAtLeast(4f)
+                            strokePaint.pathEffect = DashPathEffect(floatArrayOf(dash, dash), 0f)
+                        }
+                    }
                     val path = Path()
                     val first = layer.points.first()
                     path.moveTo(first.x * scaleX + offsetX, first.y * scaleY + offsetY)

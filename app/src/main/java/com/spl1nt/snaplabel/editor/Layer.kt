@@ -40,8 +40,11 @@ sealed class Layer {
         val points: List<Offset>,
         val color: Color = Color.Black,
         val strokeWidthPx: Float = 10f,
+        val brushShape: BrushShape = BrushShape.ROUND,
         override val center: Offset = Offset.Zero,
         override val rotationDeg: Float = 0f,
         override val scale: Float = 1f,
     ) : Layer()
 }
+
+enum class BrushShape { ROUND, SQUARE, DASHED }

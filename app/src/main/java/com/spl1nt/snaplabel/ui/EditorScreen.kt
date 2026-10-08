@@ -7,27 +7,40 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,10 +54,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.spl1nt.snaplabel.editor.BrushShape
 import com.spl1nt.snaplabel.editor.Layer
 import com.spl1nt.snaplabel.editor.LayerRenderer
 import com.spl1nt.snaplabel.printer.PrinterProtocol
@@ -71,6 +86,8 @@ fun EditorScreen(
     var pendingTextTap by remember { mutableStateOf<Offset?>(null) }
     var activeDraw by remember { mutableStateOf<List<Offset>?>(null) }
     val drawColor = Color.Black
+    var brushSize by remember { mutableFloatStateOf(10f) }
+    var brushShape by remember { mutableStateOf(BrushShape.ROUND) }
 
     var canvasSize by remember { mutableStateOf(Offset(1f, 1f)) }
     val photoW = photo.width.toFloat()
@@ -121,7 +138,16 @@ fun EditorScreen(
             )
         },
         bottomBar = {
-            NavigationBar {
+            Column {
+                if (tool == Tool.DRAW) {
+                    BrushControls(
+                        size = brushSize,
+                        onSizeChange = { brushSize = it },
+                        shape = brushShape,
+                        onShapeChange = { brushShape = it },
+                    )
+                }
+                NavigationBar {
                 NavigationBarItem(
                     selected = tool == Tool.SELECT,
                     onClick = { tool = Tool.SELECT },
@@ -146,6 +172,7 @@ fun EditorScreen(
                     icon = { Icon(Icons.Default.Draw, contentDescription = null) },
                     label = { Text("Draw") },
                 )
+                }
             }
         },
     ) { padding ->
@@ -190,7 +217,16 @@ fun EditorScreen(
                                 onDragStart = { activeDraw = listOf(toPhotoSpace(it)) },
                                 onDrag = { change, _ -> activeDraw = (activeDraw ?: emptyList()) + toPhotoSpace(change.position) },
                                 onDragEnd = {
-                                    activeDraw?.let { pts -> if (pts.size > 1) layers = layers + Layer.DrawLayer(points = pts, color = drawColor) }
+                                    activeDraw?.let { pts ->
+                                        if (pts.size > 1) {
+                                            layers = layers + Layer.DrawLayer(
+                                                points = pts,
+                                                color = drawColor,
+                                                strokeWidthPx = brushSize,
+                                                brushShape = brushShape,
+                                            )
+                                        }
+                                    }
                                     activeDraw = null
                                 },
                             )
@@ -208,7 +244,8 @@ fun EditorScreen(
                 drawIntoCanvas { c ->
                     LayerRenderer.draw(c.nativeCanvas, layers, s, s, o.x, o.y)
                     activeDraw?.let { pts ->
-                        LayerRenderer.draw(c.nativeCanvas, listOf(Layer.DrawLayer(points = pts, color = drawColor)), s, s, o.x, o.y)
+                        val preview = Layer.DrawLayer(points = pts, color = drawColor, strokeWidthPx = brushSize, brushShape = brushShape)
+                        LayerRenderer.draw(c.nativeCanvas, listOf(preview), s, s, o.x, o.y)
                     }
                 }
                 drawRect(
@@ -263,4 +300,50 @@ fun EditorScreen(
             },
         )
     }
+}
+
+/** Shown above the tool bar only while the Draw tool is active: stroke width + brush shape. */
+@Composable
+private fun BrushControls(
+    size: Float,
+    onSizeChange: (Float) -> Unit,
+    shape: BrushShape,
+    onShapeChange: (BrushShape) -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // A small filled dot that grows with the slider, so size is felt as well as read.
+            Box(
+                Modifier
+                    .padding(end = 8.dp)
+                    .size((8 + size).dp.coerceAtMost(40.dp))
+                    .background(Color.Black, shape = CircleShape),
+            )
+            Slider(
+                value = size,
+                onValueChange = onSizeChange,
+                valueRange = 2f..40f,
+                modifier = Modifier.weight(1f),
+            )
+            BrushShapeButton(Icons.Default.Circle, "Round brush", shape == BrushShape.ROUND) { onShapeChange(BrushShape.ROUND) }
+            BrushShapeButton(Icons.Default.CropSquare, "Square brush", shape == BrushShape.SQUARE) { onShapeChange(BrushShape.SQUARE) }
+            BrushShapeButton(Icons.Default.MoreHoriz, "Dashed brush", shape == BrushShape.DASHED) { onShapeChange(BrushShape.DASHED) }
+        }
+    }
+}
+
+@Composable
+private fun BrushShapeButton(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        colors = IconButtonDefaults.iconButtonColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+    ) { Icon(icon, contentDescription = label) }
 }
