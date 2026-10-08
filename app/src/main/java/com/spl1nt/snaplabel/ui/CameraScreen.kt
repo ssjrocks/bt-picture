@@ -11,6 +11,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,17 +20,26 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,12 +48,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.spl1nt.snaplabel.editor.Layer
 import com.spl1nt.snaplabel.printer.PrinterProtocol
 import com.spl1nt.snaplabel.util.BitmapUtils
 import kotlinx.coroutines.Dispatchers
@@ -51,9 +63,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.Executors
 
-/** Live camera preview with a shutter button, plus a gallery-picker fallback. */
+/** Live camera preview with a shutter button, a gallery-picker fallback, a blank canvas, and label templates. */
 @Composable
-fun CameraScreen(onPhotoReady: (Bitmap) -> Unit) {
+fun CameraScreen(onPhotoReady: (Bitmap) -> Unit, onTemplateReady: (Bitmap, Layer) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context) }
@@ -66,6 +78,8 @@ fun CameraScreen(onPhotoReady: (Bitmap) -> Unit) {
 
     var cameraError by remember { mutableStateOf<String?>(null) }
     var retryToken by remember { mutableStateOf(0) }
+    var showTemplates by remember { mutableStateOf(false) }
+    var pendingTemplate by remember { mutableStateOf<LabelTemplate?>(null) }
 
     LaunchedEffect(retryToken) {
         cameraError = null
@@ -150,8 +164,79 @@ fun CameraScreen(onPhotoReady: (Bitmap) -> Unit) {
                 onClick = { onPhotoReady(blankCanvas()) },
                 modifier = Modifier.size(56.dp),
             ) { Icon(Icons.Default.Brush, contentDescription = "Start from a blank canvas") }
+
+            FilledTonalIconButton(
+                onClick = { showTemplates = true },
+                modifier = Modifier.size(56.dp),
+            ) { Icon(Icons.Default.Article, contentDescription = "Start from a label template") }
         }
     }
+
+    if (showTemplates) {
+        ModalBottomSheet(onDismissRequest = { showTemplates = false }) {
+            LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                items(LABEL_TEMPLATES) { template ->
+                    ListItem(
+                        headlineContent = { Text(template.label) },
+                        modifier = Modifier.clickable {
+                            showTemplates = false
+                            if (template.format.contains("%s")) {
+                                pendingTemplate = template
+                            } else {
+                                onTemplateReady(blankCanvas(), templateTextLayer(template.format))
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    pendingTemplate?.let { template ->
+        var blank by remember(template) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { pendingTemplate = null },
+            title = { Text(template.label) },
+            text = {
+                OutlinedTextField(
+                    value = blank,
+                    onValueChange = { blank = it },
+                    singleLine = true,
+                    placeholder = { Text("e.g. SAM'S ROBOT") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = blank.isNotBlank(),
+                    onClick = {
+                        val text = template.format.format(blank.uppercase())
+                        onTemplateReady(blankCanvas(), templateTextLayer(text))
+                        pendingTemplate = null
+                    },
+                ) { Text("Use it") }
+            },
+            dismissButton = { TextButton(onClick = { pendingTemplate = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+private data class LabelTemplate(val label: String, val format: String)
+
+private val LABEL_TEMPLATES = listOf(
+    LabelTemplate("Property of ___", "PROPERTY OF %s"),
+    LabelTemplate("World's Best ___", "WORLD'S BEST %s"),
+    LabelTemplate("Warning: ___", "WARNING: %s"),
+    LabelTemplate("Caution: ___ Inside", "CAUTION: %s INSIDE"),
+    LabelTemplate("Danger: ___", "DANGER: %s"),
+    LabelTemplate("#1 ___", "#1 %s"),
+    LabelTemplate("Do Not Touch", "DO NOT TOUCH\n(SERIOUSLY)"),
+    LabelTemplate("Top Secret", "TOP SECRET\nKEEP OUT"),
+)
+
+private fun templateTextLayer(text: String): Layer {
+    val w = (PrinterProtocol.LABEL_WIDTH_DOTS - PrinterProtocol.MARGIN_DOTS * 2) * 3
+    val h = (PrinterProtocol.LABEL_HEIGHT_DOTS - PrinterProtocol.MARGIN_DOTS * 2) * 3
+    return Layer.TextLayer(text = text, center = Offset(w / 2f, h / 2f), baseFontSizePx = 90f)
 }
 
 /**

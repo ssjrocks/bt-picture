@@ -32,12 +32,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.spl1nt.snaplabel.printer.BlePrinterManager
 import com.spl1nt.snaplabel.printer.ImageDitherer
 import com.spl1nt.snaplabel.printer.PackedBitmap
 import com.spl1nt.snaplabel.printer.PrinterProtocol
 import com.spl1nt.snaplabel.printer.PrinterRepository
+import com.spl1nt.snaplabel.util.PrintHistory
 import kotlinx.coroutines.launch
 
 /**
@@ -54,6 +56,7 @@ fun PrintPreviewScreen(
     onConnectPrinter: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val connState by repo.ble.state.collectAsState()
     var brightness by remember { mutableFloatStateOf(1.12f) }
     var contrast by remember { mutableFloatStateOf(1.15f) }
@@ -114,7 +117,10 @@ fun PrintPreviewScreen(
                         val result = repo.ble.print(bytes)
                         printing = false
                         status = result.fold(
-                            onSuccess = { s -> "Sent ${s.bytes}B in ${s.chunks} chunks over ${s.elapsedMs}ms (MTU ${s.mtu})." },
+                            onSuccess = { s ->
+                                PrintHistory.save(context, previewBitmap)
+                                "Sent ${s.bytes}B in ${s.chunks} chunks over ${s.elapsedMs}ms (MTU ${s.mtu})."
+                            },
                             onFailure = { e -> "Failed: ${e.message}" },
                         )
                     }

@@ -33,6 +33,8 @@ sealed class Layer {
         override val rotationDeg: Float = 0f,
         override val scale: Float = 1f,
         val baseSizePx: Float = 140f,
+        /** True for the googly-eyes sticker, which is drawn as custom graphics (see LayerRenderer) rather than this emoji font glyph — more reliably goofy-looking than any single Unicode glyph across devices. */
+        val isGoogly: Boolean = false,
     ) : Layer()
 
     data class DrawLayer(

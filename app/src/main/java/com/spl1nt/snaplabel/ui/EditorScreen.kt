@@ -18,10 +18,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CropSquare
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PanTool
+import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
@@ -76,10 +78,11 @@ private enum class Tool { SELECT, TEXT, EMOJI, DRAW }
 @Composable
 fun EditorScreen(
     photo: Bitmap,
+    initialLayers: List<Layer> = emptyList(),
     onPrint: (Bitmap) -> Unit,
     onBack: () -> Unit,
 ) {
-    var layers by remember { mutableStateOf(listOf<Layer>()) }
+    var layers by remember { mutableStateOf(initialLayers) }
     var tool by remember { mutableStateOf(Tool.SELECT) }
     var showEmojiPicker by remember { mutableStateOf(false) }
     var editingText by remember { mutableStateOf(false) }
@@ -88,6 +91,9 @@ fun EditorScreen(
     val drawColor = Color.Black
     var brushSize by remember { mutableFloatStateOf(10f) }
     var brushShape by remember { mutableStateOf(BrushShape.ROUND) }
+    // Set (and kept fresh) by any drag/pinch in Select mode — see detectTransformGestures
+    // below — so a resize/delete control for the touched sticker can be shown in bottomBar.
+    var selectedLayerId by remember { mutableStateOf<String?>(null) }
 
     var canvasSize by remember { mutableStateOf(Offset(1f, 1f)) }
     val photoW = photo.width.toFloat()
@@ -128,7 +134,10 @@ fun EditorScreen(
                 title = { Text("Edit") },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.Close, contentDescription = "Discard") } },
                 actions = {
-                    IconButton(onClick = { if (layers.isNotEmpty()) layers = layers.dropLast(1) }) {
+                    IconButton(onClick = {
+                        if (layers.isNotEmpty()) layers = layers.dropLast(1)
+                        selectedLayerId = null
+                    }) {
                         Icon(Icons.Default.Undo, contentDescription = "Undo")
                     }
                     TextButton(onClick = { onPrint(LayerRenderer.flattenAtPhotoResolution(photo, layers)) }) {
@@ -147,31 +156,50 @@ fun EditorScreen(
                         onShapeChange = { brushShape = it },
                     )
                 }
+                val selected = if (tool == Tool.SELECT) layers.find { it.id == selectedLayerId } else null
+                if (selected != null && selected !is Layer.DrawLayer) {
+                    SelectionControls(
+                        scale = selected.scale,
+                        onScaleChange = { newScale ->
+                            updateLayer(selected.id) { l ->
+                                when (l) {
+                                    is Layer.TextLayer -> l.copy(scale = newScale)
+                                    is Layer.EmojiLayer -> l.copy(scale = newScale)
+                                    else -> l
+                                }
+                            }
+                        },
+                        onDelete = {
+                            layers = layers.filterNot { it.id == selected.id }
+                            selectedLayerId = null
+                        },
+                    )
+                }
                 NavigationBar {
-                NavigationBarItem(
-                    selected = tool == Tool.SELECT,
-                    onClick = { tool = Tool.SELECT },
-                    icon = { Icon(Icons.Default.PanTool, contentDescription = null) },
-                    label = { Text("Move") },
-                )
-                NavigationBarItem(
-                    selected = tool == Tool.TEXT,
-                    onClick = { tool = Tool.TEXT },
-                    icon = { Icon(Icons.Default.TextFields, contentDescription = null) },
-                    label = { Text("Text") },
-                )
-                NavigationBarItem(
-                    selected = tool == Tool.EMOJI,
-                    onClick = { tool = Tool.EMOJI; showEmojiPicker = true },
-                    icon = { Icon(Icons.Default.EmojiEmotions, contentDescription = null) },
-                    label = { Text("Emoji") },
-                )
-                NavigationBarItem(
-                    selected = tool == Tool.DRAW,
-                    onClick = { tool = Tool.DRAW },
-                    icon = { Icon(Icons.Default.Draw, contentDescription = null) },
-                    label = { Text("Draw") },
-                )
+                    NavigationBarItem(
+                        selected = tool == Tool.SELECT,
+                        onClick = { tool = Tool.SELECT },
+                        icon = { Icon(Icons.Default.PanTool, contentDescription = null) },
+                        label = { Text("Move") },
+                    )
+                    NavigationBarItem(
+                        selected = tool == Tool.TEXT,
+                        onClick = { tool = Tool.TEXT; selectedLayerId = null },
+                        icon = { Icon(Icons.Default.TextFields, contentDescription = null) },
+                        label = { Text("Text") },
+                    )
+                    NavigationBarItem(
+                        selected = tool == Tool.EMOJI,
+                        onClick = { tool = Tool.EMOJI; showEmojiPicker = true; selectedLayerId = null },
+                        icon = { Icon(Icons.Default.EmojiEmotions, contentDescription = null) },
+                        label = { Text("Emoji") },
+                    )
+                    NavigationBarItem(
+                        selected = tool == Tool.DRAW,
+                        onClick = { tool = Tool.DRAW; selectedLayerId = null },
+                        icon = { Icon(Icons.Default.Draw, contentDescription = null) },
+                        label = { Text("Draw") },
+                    )
                 }
             }
         },
@@ -190,6 +218,7 @@ fun EditorScreen(
                         when (tool) {
                             Tool.SELECT -> detectTransformGestures { centroid, pan, zoom, rotation ->
                                 val id = hitTest(toPhotoSpace(centroid))?.id ?: return@detectTransformGestures
+                                selectedLayerId = id
                                 val s = displayScale()
                                 val moved = Offset(pan.x / s, pan.y / s)
                                 updateLayer(id) { l ->
@@ -269,7 +298,16 @@ fun EditorScreen(
         EmojiPickerSheet(
             onDismiss = { showEmojiPicker = false; tool = Tool.SELECT },
             onPick = { emoji ->
-                layers = layers + Layer.EmojiLayer(emoji = emoji, center = Offset(photoW / 2f, photoH / 2f))
+                val layer = Layer.EmojiLayer(emoji = emoji, center = Offset(photoW / 2f, photoH / 2f))
+                layers = layers + layer
+                selectedLayerId = layer.id
+                showEmojiPicker = false
+                tool = Tool.SELECT
+            },
+            onPickGoogly = {
+                val layer = Layer.EmojiLayer(emoji = "", isGoogly = true, center = Offset(photoW / 2f, photoH / 2f))
+                layers = layers + layer
+                selectedLayerId = layer.id
                 showEmojiPicker = false
                 tool = Tool.SELECT
             },
@@ -288,7 +326,9 @@ fun EditorScreen(
                 TextButton(onClick = {
                     if (value.isNotBlank()) {
                         val center = pendingTextTap ?: Offset(photoW / 2f, photoH / 2f)
-                        layers = layers + Layer.TextLayer(text = value, center = center)
+                        val layer = Layer.TextLayer(text = value, center = center)
+                        layers = layers + layer
+                        selectedLayerId = layer.id
                     }
                     editingText = false
                     pendingTextTap = null
@@ -299,6 +339,33 @@ fun EditorScreen(
                 TextButton(onClick = { editingText = false; pendingTextTap = null }) { Text("Cancel") }
             },
         )
+    }
+}
+
+/**
+ * Shown above the tool bar whenever a text or emoji sticker is selected (tap
+ * or drag it in Move mode): an explicit, precise size slider plus a delete
+ * button — a more reliable way to resize than pinch alone, especially for a
+ * small sticker or an imprecise touch.
+ */
+@Composable
+private fun SelectionControls(scale: Float, onScaleChange: (Float) -> Unit, onDelete: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.PhotoSizeSelectLarge, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+            Slider(
+                value = scale,
+                onValueChange = onScaleChange,
+                valueRange = 0.3f..6f,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
+        }
     }
 }
 

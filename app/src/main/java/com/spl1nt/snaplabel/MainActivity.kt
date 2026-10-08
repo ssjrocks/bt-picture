@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -36,10 +37,12 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.spl1nt.snaplabel.editor.Layer
 import com.spl1nt.snaplabel.printer.BlePrinterManager
 import com.spl1nt.snaplabel.printer.PrinterRepository
 import com.spl1nt.snaplabel.ui.CameraScreen
 import com.spl1nt.snaplabel.ui.EditorScreen
+import com.spl1nt.snaplabel.ui.HistoryScreen
 import com.spl1nt.snaplabel.ui.PrintPreviewScreen
 import com.spl1nt.snaplabel.ui.PrinterScreen
 import com.spl1nt.snaplabel.ui.UpdateAvailableDialog
@@ -96,6 +99,7 @@ private object Routes {
     const val EDITOR = "editor"
     const val PRINT_PREVIEW = "print"
     const val PRINTER = "printer"
+    const val HISTORY = "history"
 }
 
 @Composable
@@ -103,6 +107,7 @@ private fun SnapLabelApp(repo: PrinterRepository) {
     val navController = rememberNavController()
     val context = LocalContext.current
     var capturedPhoto by remember { mutableStateOf<Bitmap?>(null) }
+    var initialLayers by remember { mutableStateOf<List<Layer>>(emptyList()) }
     var flattenedForPrint by remember { mutableStateOf<Bitmap?>(null) }
     var availableUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
 
@@ -132,14 +137,22 @@ private fun SnapLabelApp(repo: PrinterRepository) {
     NavHost(navController = navController, startDestination = Routes.CAMERA) {
         composable(Routes.CAMERA) {
             Box(Modifier.fillMaxSize()) {
-                CameraScreen(onPhotoReady = { bmp ->
-                    capturedPhoto = bmp
-                    navController.navigate(Routes.EDITOR)
-                })
+                CameraScreen(
+                    onPhotoReady = { bmp ->
+                        capturedPhoto = bmp
+                        initialLayers = emptyList()
+                        navController.navigate(Routes.EDITOR)
+                    },
+                    onTemplateReady = { bmp, layer ->
+                        capturedPhoto = bmp
+                        initialLayers = listOf(layer)
+                        navController.navigate(Routes.EDITOR)
+                    },
+                )
                 val connState by repo.ble.state.collectAsState()
                 IconButton(
                     onClick = { navController.navigate(Routes.PRINTER) },
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
                 ) {
                     Icon(
                         Icons.Default.Print,
@@ -151,12 +164,17 @@ private fun SnapLabelApp(repo: PrinterRepository) {
                         },
                     )
                 }
+                IconButton(
+                    onClick = { navController.navigate(Routes.HISTORY) },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                ) { Icon(Icons.Default.History, contentDescription = "Print history") }
             }
         }
         composable(Routes.EDITOR) {
             capturedPhoto?.let { photo ->
                 EditorScreen(
                     photo = photo,
+                    initialLayers = initialLayers,
                     onPrint = { flattened ->
                         flattenedForPrint = flattened
                         navController.navigate(Routes.PRINT_PREVIEW)
@@ -177,6 +195,9 @@ private fun SnapLabelApp(repo: PrinterRepository) {
         }
         composable(Routes.PRINTER) {
             PrinterScreen(repo = repo, onDone = { navController.popBackStack() })
+        }
+        composable(Routes.HISTORY) {
+            HistoryScreen(repo = repo, onBack = { navController.popBackStack() })
         }
     }
 }

@@ -2,10 +2,13 @@ package com.spl1nt.snaplabel.editor
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import androidx.compose.ui.graphics.toArgb
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Draws [layers] (stored in the base photo's own pixel space) onto [canvas],
@@ -36,15 +39,28 @@ object LayerRenderer {
                     textPaint.color = layer.color.toArgb()
                     textPaint.textSize = layer.baseFontSizePx * layer.scale * scaleX
                     drawCentered(canvas, layer.center, layer.rotationDeg, scaleX, scaleY, offsetX, offsetY) {
-                        val w = textPaint.measureText(layer.text)
-                        canvas.drawText(layer.text, -w / 2f, textPaint.textSize / 3f, textPaint)
+                        // Templates can have more than one line (e.g. "DO NOT TOUCH\n(SERIOUSLY)"); Canvas.drawText
+                        // doesn't break on \n itself, so lines are split and stacked here, centered as a block.
+                        val lines = layer.text.split("\n")
+                        val lineHeight = textPaint.textSize * 1.15f
+                        var y = -lineHeight * (lines.size - 1) / 2f + textPaint.textSize * 0.35f
+                        for (line in lines) {
+                            val w = textPaint.measureText(line)
+                            canvas.drawText(line, -w / 2f, y, textPaint)
+                            y += lineHeight
+                        }
                     }
                 }
                 is Layer.EmojiLayer -> {
-                    emojiPaint.textSize = layer.baseSizePx * layer.scale * scaleX
+                    val sizePx = layer.baseSizePx * layer.scale * scaleX
                     drawCentered(canvas, layer.center, layer.rotationDeg, scaleX, scaleY, offsetX, offsetY) {
-                        val w = emojiPaint.measureText(layer.emoji)
-                        canvas.drawText(layer.emoji, -w / 2f, emojiPaint.textSize / 3f, emojiPaint)
+                        if (layer.isGoogly) {
+                            drawGooglyEyes(canvas, layer.id, sizePx)
+                        } else {
+                            emojiPaint.textSize = sizePx
+                            val w = emojiPaint.measureText(layer.emoji)
+                            canvas.drawText(layer.emoji, -w / 2f, emojiPaint.textSize / 3f, emojiPaint)
+                        }
                     }
                 }
                 is Layer.DrawLayer -> {
@@ -77,6 +93,34 @@ object LayerRenderer {
                     canvas.drawPath(path, strokePaint)
                 }
             }
+        }
+    }
+
+    /**
+     * A pair of classic prank googly eyes, drawn as actual circles rather
+     * than relying on any single emoji glyph rendering consistently across
+     * devices/fonts. Each pupil sits at a fixed-but-silly offset derived from
+     * [seed] (the layer's own id), so it looks "random" without jittering on
+     * every redraw.
+     */
+    private fun drawGooglyEyes(canvas: Canvas, seed: String, totalSizePx: Float) {
+        val eyeRadius = totalSizePx * 0.28f
+        val gap = totalSizePx * 0.1f
+        val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
+        val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            style = Paint.Style.STROKE
+            strokeWidth = (totalSizePx * 0.035f).coerceAtLeast(1f)
+        }
+        val pupil = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; style = Paint.Style.FILL }
+        val centers = floatArrayOf(-(eyeRadius + gap / 2f), eyeRadius + gap / 2f)
+        for ((i, cx) in centers.withIndex()) {
+            canvas.drawCircle(cx, 0f, eyeRadius, white)
+            canvas.drawCircle(cx, 0f, eyeRadius, outline)
+            val hash = (seed + i).hashCode()
+            val angle = ((hash and 0xFFFF) / 65535f) * (2 * Math.PI).toFloat()
+            val dist = eyeRadius * (0.25f + (((hash ushr 16) and 0xFF) / 255f) * 0.45f)
+            canvas.drawCircle(cx + cos(angle) * dist, sin(angle) * dist, eyeRadius * 0.4f, pupil)
         }
     }
 
