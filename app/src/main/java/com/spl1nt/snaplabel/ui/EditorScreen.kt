@@ -31,17 +31,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import com.spl1nt.snaplabel.editor.Layer
 import com.spl1nt.snaplabel.editor.LayerRenderer
+import com.spl1nt.snaplabel.printer.PrinterProtocol
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -69,6 +75,10 @@ fun EditorScreen(
     var canvasSize by remember { mutableStateOf(Offset(1f, 1f)) }
     val photoW = photo.width.toFloat()
     val photoH = photo.height.toFloat()
+    // Exactly the rectangle PrintPreviewScreen's fitToLabel() will later crop
+    // to — shown as a guide so what you compose here is what actually prints,
+    // instead of a silent crop surprising you after the fact.
+    val cropRect = remember(photo) { PrinterProtocol.printableCropRect(photo.width, photo.height) }
 
     fun displayScale(): Float = min(canvasSize.x / photoW, canvasSize.y / photoH)
     fun displayOffset(): Offset {
@@ -196,12 +206,25 @@ fun EditorScreen(
                     dstSize = IntSize((photoW * s).roundToInt(), (photoH * s).roundToInt()),
                 )
                 drawIntoCanvas { c ->
-                    LayerRenderer.draw(c.nativeCanvas, layers, s, s)
+                    LayerRenderer.draw(c.nativeCanvas, layers, s, s, o.x, o.y)
                     activeDraw?.let { pts ->
-                        LayerRenderer.draw(c.nativeCanvas, listOf(Layer.DrawLayer(points = pts, color = drawColor)), s, s)
+                        LayerRenderer.draw(c.nativeCanvas, listOf(Layer.DrawLayer(points = pts, color = drawColor)), s, s, o.x, o.y)
                     }
                 }
+                drawRect(
+                    color = Color.White.copy(alpha = 0.85f),
+                    topLeft = Offset(o.x + cropRect[0] * s, o.y + cropRect[1] * s),
+                    size = Size(cropRect[2] * s, cropRect[3] * s),
+                    style = Stroke(width = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 12f))),
+                )
             }
+            Text(
+                "Dashed box = what actually prints",
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp),
+            )
         }
     }
 

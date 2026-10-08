@@ -1,9 +1,6 @@
 package com.spl1nt.snaplabel.ui
 
-import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -40,7 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.exifinterface.media.ExifInterface
+import com.spl1nt.snaplabel.util.BitmapUtils
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -54,13 +51,18 @@ fun CameraScreen(onPhotoReady: (Bitmap) -> Unit) {
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
-        uri?.let { loadBitmapFromUri(context, it)?.let(onPhotoReady) }
+        uri?.let { BitmapUtils.loadFromUri(context, it)?.let(onPhotoReady) }
     }
 
     LaunchedEffect(Unit) {
         val provider = ProcessCameraProvider.getInstance(context).get()
         val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-        val capture = ImageCapture.Builder().build()
+        // Tie target rotation to this view's own display rather than leaving
+        // it at CameraX's default, which can otherwise mis-tag the captured
+        // JPEG's EXIF orientation on a tablet started in landscape.
+        val capture = ImageCapture.Builder()
+            .setTargetRotation(previewView.display?.rotation ?: android.view.Surface.ROTATION_0)
+            .build()
         imageCapture = capture
         provider.unbindAll()
         runCatching {
@@ -95,7 +97,7 @@ fun CameraScreen(onPhotoReady: (Bitmap) -> Unit) {
                         cameraExecutor,
                         object : ImageCapture.OnImageSavedCallback {
                             override fun onImageSaved(results: ImageCapture.OutputFileResults) {
-                                loadBitmapFromFile(file)?.let { bmp ->
+                                BitmapUtils.loadFromFile(file.absolutePath)?.let { bmp ->
                                     android.os.Handler(android.os.Looper.getMainLooper()).post { onPhotoReady(bmp) }
                                 }
                             }
@@ -110,22 +112,3 @@ fun CameraScreen(onPhotoReady: (Bitmap) -> Unit) {
         }
     }
 }
-
-private fun loadBitmapFromUri(context: Context, uri: Uri): Bitmap? = runCatching {
-    context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-}.getOrNull()
-
-private fun loadBitmapFromFile(file: File): Bitmap? = runCatching {
-    val bmp = BitmapFactory.decodeFile(file.absolutePath) ?: return null
-    val exif = ExifInterface(file.absolutePath)
-    val rotation = when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
-        ExifInterface.ORIENTATION_ROTATE_90 -> 90f
-        ExifInterface.ORIENTATION_ROTATE_180 -> 180f
-        ExifInterface.ORIENTATION_ROTATE_270 -> 270f
-        else -> 0f
-    }
-    if (rotation == 0f) bmp else {
-        val m = Matrix().apply { postRotate(rotation) }
-        Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
-    }
-}.getOrNull()

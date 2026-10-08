@@ -63,6 +63,32 @@ object PrinterProtocol {
     }
 
     private val HEX = "0123456789ABCDEF".toCharArray()
+
+    /**
+     * The centered rectangle, in `srcW`x`srcH` source-pixel space, that
+     * survives cropping to this printer's aspect ratio. Shared by the print
+     * pipeline's actual crop and the editor's crop-guide overlay so a photo
+     * never prints a different area than what the editor showed as the
+     * printable region.
+     */
+    fun printableCropRect(srcW: Int, srcH: Int): IntArray {
+        val targetW = LABEL_WIDTH_DOTS - MARGIN_DOTS * 2
+        val targetH = LABEL_HEIGHT_DOTS - MARGIN_DOTS * 2
+        val srcRatio = srcW.toFloat() / srcH
+        val targetRatio = targetW.toFloat() / targetH
+        val cw: Int
+        val ch: Int
+        if (srcRatio > targetRatio) {
+            ch = srcH
+            cw = (srcH * targetRatio).toInt().coerceAtMost(srcW)
+        } else {
+            cw = srcW
+            ch = (srcW / targetRatio).toInt().coerceAtMost(srcH)
+        }
+        val cx = ((srcW - cw) / 2).coerceAtLeast(0)
+        val cy = ((srcH - ch) / 2).coerceAtLeast(0)
+        return intArrayOf(cx, cy, cw, ch)
+    }
 }
 
 /** A dithered 1-bit image, MSB-first per row, already positioned on the label. */

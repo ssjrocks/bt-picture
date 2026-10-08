@@ -130,23 +130,16 @@ fun PrintPreviewScreen(
 
 private data class FittedPhoto(val bitmap: Bitmap, val x: Int, val y: Int)
 
-/** Scale+crop [src] to exactly fill the printable label area, centered. */
+/**
+ * Scale+crop [src] to exactly fill the printable label area, centered — using
+ * the exact same rectangle [PrinterProtocol.printableCropRect] gives the
+ * editor's crop-guide overlay, so what the editor showed as printable is what
+ * actually gets cropped here.
+ */
 private fun fitToLabel(src: Bitmap): FittedPhoto {
     val targetW = PrinterProtocol.LABEL_WIDTH_DOTS - PrinterProtocol.MARGIN_DOTS * 2
     val targetH = PrinterProtocol.LABEL_HEIGHT_DOTS - PrinterProtocol.MARGIN_DOTS * 2
-    val srcRatio = src.width.toFloat() / src.height
-    val targetRatio = targetW.toFloat() / targetH
-    val cw: Int
-    val ch: Int
-    if (srcRatio > targetRatio) {
-        ch = src.height
-        cw = (src.height * targetRatio).toInt().coerceAtMost(src.width)
-    } else {
-        cw = src.width
-        ch = (src.width / targetRatio).toInt().coerceAtMost(src.height)
-    }
-    val cx = ((src.width - cw) / 2).coerceAtLeast(0)
-    val cy = ((src.height - ch) / 2).coerceAtLeast(0)
+    val (cx, cy, cw, ch) = PrinterProtocol.printableCropRect(src.width, src.height)
     val cropped = Bitmap.createBitmap(src, cx, cy, cw, ch)
     val scaled = Bitmap.createScaledBitmap(cropped, targetW, targetH, true)
     return FittedPhoto(scaled, PrinterProtocol.MARGIN_DOTS, PrinterProtocol.MARGIN_DOTS)
