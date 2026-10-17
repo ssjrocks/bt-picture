@@ -32,6 +32,7 @@ import com.spl1nt.snaplabel.printer.BlePrinterManager
 import com.spl1nt.snaplabel.printer.PrinterRepository
 import com.spl1nt.snaplabel.update.UpdateChecker
 import com.spl1nt.snaplabel.update.UpdateInfo
+import com.ssjrocks.appreports.AppReports
 import kotlinx.coroutines.launch
 
 @Composable
@@ -112,6 +113,15 @@ fun PrinterScreen(repo: PrinterRepository, onDone: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(if (checkingUpdate) "Checking…" else "Check for updates") }
             updateStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            TextButton(
+                onClick = {
+                    AppReports.showReportDialog(
+                        context,
+                        mapOf("printer" to rememberedName, "connection" to connState.toString(), "nearby" to found.size),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Report a problem") }
 
             Spacer(Modifier.height(8.dp))
             Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
